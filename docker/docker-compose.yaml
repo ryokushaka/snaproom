@@ -275,7 +275,7 @@ services:
   # Laravel Backend API
   snaproom-laravel:
     build:
-      context: ../../snaproom-laravel
+      context: ../snaproom-laravel
       dockerfile: Dockerfile
     container_name: snaproom-laravel
     restart: unless-stopped
@@ -331,7 +331,7 @@ services:
   # React Frontend
   snaproom-react:
     build:
-      context: ../../snaproom-react
+      context: ../snaproom-react
       dockerfile: Dockerfile
     container_name: snaproom-react
     restart: unless-stopped

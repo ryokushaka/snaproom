@@ -35,11 +35,13 @@ A modern full-stack application implementing Microservices Architecture (MSA) wi
 git clone https://github.com/ryokushaka/snaproom.git
 cd snaproom
 
-# Clone service repositories (alongside main repo)
-cd ..
+# Clone service repositories (nested within main repo)
 git clone https://github.com/ryokushaka/snaproom-react.git
 git clone https://github.com/ryokushaka/snaproom-laravel.git
 git clone https://github.com/ryokushaka/snaproom-infrastructure.git
+
+# The nested repositories are ignored by main repo's .gitignore
+# Each service repository maintains its own Git history
 ```
 
 ### Start MSA Environment
@@ -64,15 +66,14 @@ cd docker && ./test-health-endpoints.sh
 ## 📁 Project Structure
 
 ```
-workspace/
-├── snaproom/              # 🎯 Main orchestration repository
-│   ├── docker/           # Docker configurations and scripts
-│   ├── config/           # Application and service configurations
-│   ├── scripts/          # Management and deployment scripts
-│   └── *.md             # Documentation files
-├── snaproom-react/       # 🎯 Frontend repository (separate)
-├── snaproom-laravel/     # 🎯 Backend repository (separate)
-└── snaproom-infrastructure/ # 🎯 Infrastructure repository (separate)
+snaproom/ (Main Repository)
+├── docker/                   # Docker configurations and scripts
+├── config/                   # Application and service configurations
+├── scripts/                  # Management and deployment scripts
+├── snaproom-react/          # 🎯 Frontend repository (nested)
+├── snaproom-laravel/        # 🎯 Backend repository (nested)
+├── snaproom-infrastructure/ # 🎯 Infrastructure repository (nested)
+└── *.md                     # Documentation files
 ```
 
 ## 🛠️ Technology Stack
@@ -86,12 +87,16 @@ workspace/
 
 ## 📚 Documentation
 
-- **[MSA Architecture](README-MSA.md)** - Complete MSA guide
-- **[Docker Configuration](docker/README.md)** - Container orchestration
-- **[Deployment Guide](DEPLOYMENT.md)** - Production deployment
-- **[React Frontend](https://github.com/ryokushaka/snaproom-react)** - Frontend repository
-- **[Laravel Backend](https://github.com/ryokushaka/snaproom-laravel)** - Backend repository
-- **[Infrastructure Management](https://github.com/ryokushaka/snaproom-infrastructure)** - Infrastructure repository
+### Core Documentation
+- **[MSA Architecture](README-MSA.md)** - Complete MSA guide with deployment instructions
+- **[MSA Improvement Roadmap](MSA-IMPROVEMENT-ROADMAP.md)** - 3-phase enhancement plan (85% → 95% MSA)
+- **[Docker Configuration](docker/README.md)** - Container orchestration setup
+- **[Development Guide](CLAUDE.md)** - Development workflow and architecture patterns
+
+### Service Repositories
+- **[React Frontend](snaproom-react/README.md)** - Frontend repository (FSD architecture)
+- **[Laravel Backend](snaproom-laravel/README.md)** - Backend repository (ADR pattern)
+- **[Infrastructure Management](snaproom-infrastructure/README.md)** - Terraform AWS infrastructure
 
 ## 🔧 Development Commands
 
@@ -102,15 +107,15 @@ make -f Makefile.docker health-check # Check service health
 make -f Makefile.docker kafka-ui # Open Kafka management
 
 # Infrastructure Management
-cd ../snaproom-infrastructure
+cd snaproom-infrastructure
 ./scripts/deploy.sh -e dev -a plan    # Plan infrastructure
 ./scripts/deploy.sh -e dev -a apply   # Deploy infrastructure
 ./scripts/deploy.sh -e prod -a plan   # Plan production infrastructure
 
-# Repository Management
-cd ../snaproom-react && git pull      # Update frontend
-cd ../snaproom-laravel && git pull    # Update backend
-cd ../snaproom-infrastructure && git pull # Update infrastructure
+# Repository Management (Nested Repositories)
+cd snaproom-react && git pull && cd ..      # Update frontend
+cd snaproom-laravel && git pull && cd ..    # Update backend
+cd snaproom-infrastructure && git pull && cd .. # Update infrastructure
 
 # Development Shortcuts
 make -f Makefile.docker logs    # View container logs

@@ -50,24 +50,74 @@ Microservices Architecture (MSA) implementation with Redis clustering and Kafka 
 ### MSA Environment
 ```bash
 # Start complete MSA stack
-docker-compose -f docker-compose.msa.yaml up -d
+cd snaproom
+make -f Makefile.docker up
 
-# Check all services
-make status
+# Check all services health
+make -f Makefile.docker health-check
+
+# Test specific health endpoints
+cd docker && ./test-health-endpoints.sh
 
 # Access management interfaces
 # Kafka UI: http://localhost:8080 (admin/admin_secret)
 # Redis Commander: http://localhost:8081 (admin/admin_secret)
 ```
 
-### Service Health Checks
+### Access Points
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000/api/
+- **Health Check**: http://localhost:8000/api/health
+- **Detailed Health**: http://localhost:8000/api/health/detailed
+- **Kafka UI**: http://localhost:8080 (admin/admin_secret)
+- **Redis Commander**: http://localhost:8081 (admin/admin_secret)
+
+### Service Health Monitoring
 ```bash
 # Check all service health
 docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 # Individual health checks
-curl http://localhost:8000/api/health  # Laravel API
-curl http://localhost:3000/health      # React App
+curl http://localhost:8000/api/health         # Laravel API Basic
+curl http://localhost:8000/api/health/detailed # Laravel API Detailed
+curl http://localhost:3000/health             # React App
+
+# Advanced health monitoring
+curl http://localhost:8000/api/health/kafka   # Kafka connectivity
+curl http://localhost:8000/api/health/redis   # Redis cluster status
+curl http://localhost:8000/api/health/database # PostgreSQL status
+```
+
+#### Health Check Response Examples
+
+**Basic Health Check**
+```json
+{
+  "status": "healthy",
+  "timestamp": "2025-07-31T10:30:00Z",
+  "service": "snaproom-laravel",
+  "version": "1.0.0"
+}
+```
+
+**Detailed Health Check**
+```json
+{
+  "status": "healthy",
+  "timestamp": "2025-07-31T10:30:00Z",
+  "service": "snaproom-laravel",
+  "version": "1.0.0",
+  "dependencies": {
+    "database": { "status": "healthy", "response_time": "12ms" },
+    "redis": { "status": "healthy", "cluster_status": "ok" },
+    "kafka": { "status": "healthy", "brokers": 3 }
+  },
+  "metrics": {
+    "uptime": 86400,
+    "memory_usage": "245MB",
+    "cpu_usage": "15%"
+  }
+}
 ```
 
 ## 🔧 Redis Cluster Configuration
