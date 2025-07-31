@@ -1,0 +1,9 @@
+[submodule "services/frontend"]
+	path = services/frontend
+	url = https://github.com/ryokushaka/snaproom-react.git
+[submodule "services/backend"]
+	path = services/backend
+	url = https://github.com/ryokushaka/snaproom-laravel.git
+[submodule "infrastructure"]
+	path = infrastructure
+	url = https://github.com/ryokushaka/snaproom-infrastructure.git

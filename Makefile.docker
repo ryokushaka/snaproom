@@ -1,0 +1,90 @@
+# Snaproom Docker Management
+.PHONY: help build up down logs clean health-check
+
+# Default target
+help:
+	@echo "Snaproom Docker Commands:"
+	@echo "  build         - Build all Docker images"
+	@echo "  up           - Start MSA environment"
+	@echo "  down         - Stop MSA environment"
+	@echo "  logs         - View container logs"
+	@echo "  clean        - Clean containers and volumes"
+	@echo "  health-check - Check all service health"
+	@echo "  kafka-ui     - Open Kafka management UI"
+	@echo "  redis-ui     - Open Redis Commander UI"
+	@echo ""
+	@echo "Service-specific commands:"
+	@echo "  logs-api     - View Laravel API logs"
+	@echo "  logs-kafka   - View Kafka cluster logs"
+	@echo "  shell-api    - Shell into Laravel container"
+	@echo "  shell-db     - Shell into PostgreSQL container"
+
+# Docker Compose operations
+COMPOSE_FILE = docker/docker-compose.yaml
+
+build:
+	docker-compose -f $(COMPOSE_FILE) build --no-cache
+	@echo "All Docker images built successfully"
+
+up:
+	docker-compose -f $(COMPOSE_FILE) up -d
+	@echo "MSA environment started:"
+	@echo "  Frontend:      http://localhost:3000"
+	@echo "  Backend API:   http://localhost:8000"
+	@echo "  Health Check:  http://localhost:8000/api/health/detailed"
+	@echo "  Kafka UI:      http://localhost:8080 (admin/admin_secret)"
+	@echo "  Redis UI:      http://localhost:8081 (admin/admin_secret)"
+
+down:
+	docker-compose -f $(COMPOSE_FILE) down
+	@echo "MSA environment stopped"
+
+logs:
+	docker-compose -f $(COMPOSE_FILE) logs -f
+
+logs-api:
+	docker-compose -f $(COMPOSE_FILE) logs -f snaproom-laravel
+
+logs-kafka:
+	docker-compose -f $(COMPOSE_FILE) logs -f kafka-1 kafka-2 kafka-3
+
+clean:
+	docker-compose -f $(COMPOSE_FILE) down -v --remove-orphans
+	docker system prune -f
+	@echo "Environment cleaned up"
+
+# Health and monitoring
+health-check:
+	@echo "Running comprehensive health checks..."
+	@cd docker && ./test-health-endpoints.sh
+
+kafka-ui:
+	@echo "Opening Kafka UI at http://localhost:8080"
+	@echo "Credentials: admin/admin_secret"
+	@command -v open >/dev/null 2>&1 && open http://localhost:8080 || echo "Please open http://localhost:8080 manually"
+
+redis-ui:
+	@echo "Opening Redis Commander at http://localhost:8081"
+	@echo "Credentials: admin/admin_secret"
+	@command -v open >/dev/null 2>&1 && open http://localhost:8081 || echo "Please open http://localhost:8081 manually"
+
+# Development tools
+shell-api:
+	docker exec -it snaproom-laravel /bin/sh
+
+shell-db:
+	docker exec -it snaproom-db psql -U snaproom -d snaproom
+
+shell-redis:
+	docker exec -it redis-master redis-cli -a redis_secret
+
+# Service management
+restart-api:
+	docker-compose -f $(COMPOSE_FILE) restart snaproom-laravel
+
+restart-frontend:
+	docker-compose -f $(COMPOSE_FILE) restart snaproom-react
+
+status:
+	@echo "Container Status:"
+	@docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep snaproom

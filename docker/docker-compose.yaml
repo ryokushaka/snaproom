@@ -1,0 +1,412 @@
+# MSA-Ready Docker Compose with Redis Cluster + Kafka
+# Production-grade microservices architecture
+
+services:
+  # PostgreSQL Database
+  snaproom-db:
+    image: postgres:15-alpine
+    container_name: snaproom-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: snaproom
+      POSTGRES_USER: snaproom
+      POSTGRES_PASSWORD: snaproom_secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../config/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - snaproom-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U snaproom -d snaproom"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cluster - Master
+  redis-master:
+    image: redis:7-alpine
+    container_name: redis-master
+    restart: unless-stopped
+    command: >
+      redis-server 
+      --requirepass redis_secret
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 60
+      --timeout 300
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    volumes:
+      - redis_master_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - snaproom-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_secret", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cluster - Replica
+  redis-replica:
+    image: redis:7-alpine
+    container_name: redis-replica
+    restart: unless-stopped
+    command: >
+      redis-server 
+      --requirepass redis_secret
+      --masterauth redis_secret
+      --replicaof redis-master 6379
+      --appendonly yes
+      --appendfsync everysec
+      --replica-read-only yes
+    volumes:
+      - redis_replica_data:/data
+    ports:
+      - "6380:6379"
+    networks:
+      - snaproom-network
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_secret", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Sentinel
+  redis-sentinel:
+    image: redis:7-alpine
+    container_name: redis-sentinel
+    restart: unless-stopped
+    command: >
+      redis-sentinel /etc/redis/sentinel.conf
+      --sentinel announce-ip redis-sentinel
+      --sentinel announce-port 26379
+    volumes:
+      - ../config/redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+    ports:
+      - "26379:26379"
+    networks:
+      - snaproom-network
+    depends_on:
+      redis-master:
+        condition: service_healthy
+      redis-replica:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Zookeeper for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_LOG4J_ROOT_LOGLEVEL: INFO
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    ports:
+      - "2181:2181"
+    networks:
+      - snaproom-network
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo 'ruok' | nc localhost 2181"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Kafka Broker 1
+  kafka-1:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka-1
+    restart: unless-stopped
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_IN_SYNC_REPLICAS: 2
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: false
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 300000
+      KAFKA_LOG4J_ROOT_LOGLEVEL: INFO
+    volumes:
+      - kafka_1_data:/var/lib/kafka/data
+    ports:
+      - "29092:29092"
+    networks:
+      - snaproom-network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Kafka Broker 2
+  kafka-2:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka-2
+    restart: unless-stopped
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:9092,PLAINTEXT_HOST://localhost:29093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_IN_SYNC_REPLICAS: 2
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: false
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 300000
+      KAFKA_LOG4J_ROOT_LOGLEVEL: INFO
+    volumes:
+      - kafka_2_data:/var/lib/kafka/data
+    ports:
+      - "29093:29093"
+    networks:
+      - snaproom-network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Kafka Broker 3
+  kafka-3:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka-3
+    restart: unless-stopped
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 3
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-3:9092,PLAINTEXT_HOST://localhost:29094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_IN_SYNC_REPLICAS: 2
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: false
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 300000
+      KAFKA_LOG4J_ROOT_LOGLEVEL: INFO
+    volumes:
+      - kafka_3_data:/var/lib/kafka/data
+    ports:
+      - "29094:29094"
+    networks:
+      - snaproom-network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Kafka Topic Initialization
+  kafka-init:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka-init
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    networks:
+      - snaproom-network
+    command: >
+      bash -c "
+        echo 'Waiting for Kafka to be ready...'
+        sleep 30
+        
+        echo 'Creating topics...'
+        kafka-topics --create --topic user-events --bootstrap-server kafka-1:9092,kafka-2:9092,kafka-3:9092 --replication-factor 3 --partitions 6
+        kafka-topics --create --topic notification-events --bootstrap-server kafka-1:9092,kafka-2:9092,kafka-3:9092 --replication-factor 3 --partitions 3
+        kafka-topics --create --topic audit-events --bootstrap-server kafka-1:9092,kafka-2:9092,kafka-3:9092 --replication-factor 3 --partitions 3
+        kafka-topics --create --topic system-events --bootstrap-server kafka-1:9092,kafka-2:9092,kafka-3:9092 --replication-factor 3 --partitions 3
+        
+        echo 'Topics created successfully'
+        kafka-topics --list --bootstrap-server kafka-1:9092,kafka-2:9092,kafka-3:9092
+      "
+    restart: no
+
+  # Laravel Backend API
+  snaproom-laravel:
+    build:
+      context: ../services/backend
+      dockerfile: Dockerfile
+    container_name: snaproom-laravel
+    restart: unless-stopped
+    depends_on:
+      snaproom-db:
+        condition: service_healthy
+      redis-master:
+        condition: service_healthy
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    environment:
+      APP_ENV: production
+      APP_KEY: base64:YourAppKeyHere=
+      APP_DEBUG: false
+      APP_URL: http://localhost:8000
+      DB_CONNECTION: pgsql
+      DB_HOST: snaproom-db
+      DB_PORT: 5432
+      DB_DATABASE: snaproom
+      DB_USERNAME: snaproom
+      DB_PASSWORD: snaproom_secret
+      # Redis Configuration
+      REDIS_HOST: redis-master
+      REDIS_PASSWORD: redis_secret
+      REDIS_PORT: 6379
+      REDIS_CLIENT: phpredis
+      CACHE_DRIVER: redis
+      SESSION_DRIVER: redis
+      QUEUE_CONNECTION: redis
+      # Kafka Configuration
+      KAFKA_BROKERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+      KAFKA_CONSUMER_GROUP_ID: snaproom-laravel
+      LOG_CHANNEL: stderr
+      LOG_LEVEL: info
+    volumes:
+      - laravel_storage:/var/www/html/storage
+      - laravel_logs:/var/log
+    ports:
+      - "8000:8000"
+    networks:
+      - snaproom-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # React Frontend
+  snaproom-react:
+    build:
+      context: ../services/frontend
+      dockerfile: Dockerfile
+    container_name: snaproom-react
+    restart: unless-stopped
+    depends_on:
+      snaproom-laravel:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+    networks:
+      - snaproom-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Kafka UI for Management
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    restart: unless-stopped
+    depends_on:
+      - kafka-1
+      - kafka-2
+      - kafka-3
+    environment:
+      KAFKA_CLUSTERS_0_NAME: snaproom-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+      AUTH_TYPE: "LOGIN_FORM"
+      SPRING_SECURITY_USER_NAME: admin
+      SPRING_SECURITY_USER_PASSWORD: admin_secret
+    ports:
+      - "8080:8080"
+    networks:
+      - snaproom-network
+
+  # Redis Commander for Redis Management
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: redis-commander
+    restart: unless-stopped
+    depends_on:
+      - redis-master
+    environment:
+      REDIS_HOSTS: "master:redis-master:6379:0:redis_secret,replica:redis-replica:6379:0:redis_secret"
+      HTTP_USER: admin
+      HTTP_PASSWORD: admin_secret
+    ports:
+      - "8081:8081"
+    networks:
+      - snaproom-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_master_data:
+    driver: local
+  redis_replica_data:
+    driver: local
+  zookeeper_data:
+    driver: local
+  zookeeper_logs:
+    driver: local
+  kafka_1_data:
+    driver: local
+  kafka_2_data:
+    driver: local
+  kafka_3_data:
+    driver: local
+  laravel_storage:
+    driver: local
+  laravel_logs:
+    driver: local
+
+networks:
+  snaproom-network:
+    driver: bridge
