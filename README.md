@@ -29,12 +29,23 @@ A modern full-stack application implementing Microservices Architecture (MSA) wi
 
 ## 🚀 Quick Start
 
+### Repository Setup
+```bash
+# Clone main repository
+git clone https://github.com/ryokushaka/snaproom.git
+cd snaproom
+
+# Clone service repositories (alongside main repo)
+cd ..
+git clone https://github.com/ryokushaka/snaproom-react.git
+git clone https://github.com/ryokushaka/snaproom-laravel.git
+git clone https://github.com/ryokushaka/snaproom-infrastructure.git
+```
+
 ### Start MSA Environment
 ```bash
-# Initialize submodules (first time only)
-./scripts/submodules.sh init
-
 # Build and start complete MSA stack
+cd snaproom
 make -f Makefile.docker up
 
 # Verify all services are healthy
@@ -53,15 +64,15 @@ cd docker && ./test-health-endpoints.sh
 ## 📁 Project Structure
 
 ```
-snaproom/
-├── services/               # Microservices (Git Submodules)
-│   ├── frontend/          # React frontend (Feature-Sliced Design)
-│   └── backend/           # Laravel backend (ADR pattern)
-├── infrastructure/        # Terraform infrastructure (Git Submodule)
-├── docker/               # Docker configurations and scripts
-├── config/               # Application and service configurations
-├── scripts/              # Management and deployment scripts
-└── *.md                 # Documentation files
+workspace/
+├── snaproom/              # 🎯 Main orchestration repository
+│   ├── docker/           # Docker configurations and scripts
+│   ├── config/           # Application and service configurations
+│   ├── scripts/          # Management and deployment scripts
+│   └── *.md             # Documentation files
+├── snaproom-react/       # 🎯 Frontend repository (separate)
+├── snaproom-laravel/     # 🎯 Backend repository (separate)
+└── snaproom-infrastructure/ # 🎯 Infrastructure repository (separate)
 ```
 
 ## 🛠️ Technology Stack
@@ -77,10 +88,10 @@ snaproom/
 
 - **[MSA Architecture](README-MSA.md)** - Complete MSA guide
 - **[Docker Configuration](docker/README.md)** - Container orchestration
-- **[Infrastructure Management](infrastructure/README.md)** - Terraform infrastructure
 - **[Deployment Guide](DEPLOYMENT.md)** - Production deployment
-- **[React Frontend](services/frontend/README.md)** - Frontend details
-- **[Laravel Backend](services/backend/README.md)** - Backend API
+- **[React Frontend](https://github.com/ryokushaka/snaproom-react)** - Frontend repository
+- **[Laravel Backend](https://github.com/ryokushaka/snaproom-laravel)** - Backend repository
+- **[Infrastructure Management](https://github.com/ryokushaka/snaproom-infrastructure)** - Infrastructure repository
 
 ## 🔧 Development Commands
 
@@ -91,15 +102,15 @@ make -f Makefile.docker health-check # Check service health
 make -f Makefile.docker kafka-ui # Open Kafka management
 
 # Infrastructure Management
-cd infrastructure
+cd ../snaproom-infrastructure
 ./scripts/deploy.sh -e dev -a plan    # Plan infrastructure
 ./scripts/deploy.sh -e dev -a apply   # Deploy infrastructure
 ./scripts/deploy.sh -e prod -a plan   # Plan production infrastructure
 
-# Submodule Management
-./scripts/submodules.sh status        # Check submodule status
-./scripts/submodules.sh update        # Update all submodules
-./scripts/submodules.sh pull          # Pull latest changes
+# Repository Management
+cd ../snaproom-react && git pull      # Update frontend
+cd ../snaproom-laravel && git pull    # Update backend
+cd ../snaproom-infrastructure && git pull # Update infrastructure
 
 # Development Shortcuts
 make -f Makefile.docker logs    # View container logs

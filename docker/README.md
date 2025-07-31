@@ -1,6 +1,6 @@
 # Docker Configuration
 
-Docker orchestration for the Snaproom MSA application.
+Docker orchestration for the Snaproom MSA application with separate repository architecture.
 
 ## 🏗️ Architecture Overview
 
@@ -9,15 +9,40 @@ This directory contains the complete Docker configuration for running the Snapro
 - **PostgreSQL** - Primary database
 - **Redis Cluster** - Master-Replica-Sentinel setup for caching
 - **Kafka Cluster** - 3-broker setup for event streaming
-- **Laravel API** - Backend application
-- **React Frontend** - Frontend application
+- **Laravel API** - Backend application (separate repository)
+- **React Frontend** - Frontend application (separate repository)
 - **Management UIs** - Kafka UI and Redis Commander
+
+## 📋 Prerequisites
+
+### Repository Setup
+Since services are managed as separate repositories, you need to clone them alongside this main repository:
+
+```bash
+# Clone main repository
+git clone https://github.com/ryokushaka/snaproom.git
+cd snaproom
+
+# Clone service repositories (alongside main repo)
+cd ..
+git clone https://github.com/ryokushaka/snaproom-react.git
+git clone https://github.com/ryokushaka/snaproom-laravel.git
+git clone https://github.com/ryokushaka/snaproom-infrastructure.git
+
+# Directory structure should look like:
+# workspace/
+# ├── snaproom/                    # Main orchestration repository
+# ├── snaproom-react/              # Frontend repository
+# ├── snaproom-laravel/            # Backend repository
+# └── snaproom-infrastructure/     # Infrastructure repository
+```
 
 ## 🚀 Quick Start
 
 ### Start Complete MSA Environment
 ```bash
-# From the docker directory
+# From the snaproom/docker directory
+cd snaproom/docker
 docker-compose up -d
 
 # Or from project root
@@ -31,13 +56,18 @@ docker-compose -f docker/docker-compose.yaml up -d
 - **Kafka UI**: http://localhost:8080 (admin/admin_secret)
 - **Redis Commander**: http://localhost:8081 (admin/admin_secret)
 
-## 📁 Directory Structure
+## 📁 Repository Structure
 
 ```
-docker/
-├── docker-compose.yaml       # Main Docker Compose configuration
-├── test-health-endpoints.sh  # Health check testing script
-└── README.md                 # This file
+workspace/
+├── snaproom/                    # 🎯 Main orchestration repository
+│   ├── docker/                 # Docker configurations
+│   ├── config/                 # Shared configurations
+│   ├── scripts/                # Management scripts
+│   └── *.md                   # Documentation
+├── snaproom-react/             # 🎯 Frontend repository
+├── snaproom-laravel/           # 🎯 Backend repository
+└── snaproom-infrastructure/    # 🎯 Infrastructure repository
 ```
 
 ## 🔧 Configuration Files
@@ -116,6 +146,28 @@ docker-compose up -d --scale snaproom-laravel=3
 
 ## 🚨 Troubleshooting
 
+### Repository Setup Issues
+
+**Missing Service Repositories**:
+```bash
+# Check if service repositories exist
+ls -la ../snaproom-react
+ls -la ../snaproom-laravel
+
+# If missing, clone them:
+cd ..
+git clone https://github.com/ryokushaka/snaproom-react.git
+git clone https://github.com/ryokushaka/snaproom-laravel.git
+```
+
+**Build Context Errors**:
+```bash
+# Ensure repositories are at the correct relative paths
+# Docker build contexts expect:
+# ../snaproom-react/     (for frontend)
+# ../snaproom-laravel/   (for backend)
+```
+
 ### Common Issues
 
 **Port Conflicts**:
@@ -140,43 +192,45 @@ docker-compose restart snaproom-db redis-master kafka-1
 docker-compose restart snaproom-laravel snaproom-react
 ```
 
-**Resource Issues**:
-```bash
-# Check container resource usage
-docker stats --no-stream
+## 📊 Multi-Repository Workflow
 
-# Clean up unused resources
-docker system prune -f
-docker volume prune -f
+### Development Workflow
+```bash
+# 1. Update service repositories
+cd ../snaproom-react && git pull
+cd ../snaproom-laravel && git pull
+cd ../snaproom-infrastructure && git pull
+
+# 2. Rebuild and restart services
+cd ../snaproom/docker
+docker-compose build --no-cache
+docker-compose up -d
 ```
 
-### Log Analysis
-```bash
-# Application errors
-docker-compose logs snaproom-laravel | grep ERROR
+### Release Management
+Each repository maintains its own versioning:
+- **snaproom**: Orchestration and configuration versions
+- **snaproom-react**: Frontend application versions
+- **snaproom-laravel**: Backend API versions
+- **snaproom-infrastructure**: Infrastructure versions
 
-# Database connection issues
-docker-compose logs snaproom-db | tail -50
-
-# Kafka cluster issues
-docker-compose logs kafka-1 kafka-2 kafka-3
+### CI/CD Integration
+```yaml
+# Example workflow for coordinated deployment
+name: Deploy MSA
+on:
+  workflow_run:
+    workflows: ["snaproom-react CI", "snaproom-laravel CI"]
+    types: [completed]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout orchestration
+        uses: actions/checkout@v3
+      - name: Deploy with Docker
+        run: make -f Makefile.docker up
 ```
-
-## 📊 Performance Tuning
-
-### Resource Limits
-The configuration includes appropriate resource limits for development:
-- **Kafka**: 512MB heap, 1GB container limit
-- **Redis**: 256MB max memory with LRU eviction
-- **PostgreSQL**: Standard configuration with health checks
-
-### Production Considerations
-For production deployment:
-1. **Increase resource limits** based on load testing
-2. **Enable TLS** for all inter-service communication  
-3. **Configure monitoring** with Prometheus/Grafana
-4. **Set up log aggregation** with ELK stack
-5. **Implement backup strategies** for persistent volumes
 
 ## 🔐 Security Notes
 
@@ -185,12 +239,9 @@ For production deployment:
 - **All services** run in isolated Docker network
 - **Only necessary ports** are exposed to host
 
-### Production Security Checklist
-- [ ] Change all default passwords
-- [ ] Enable TLS/SSL certificates
-- [ ] Configure proper firewall rules
-- [ ] Set up secret management
-- [ ] Enable audit logging
-- [ ] Configure backup encryption
+### Repository Security
+- **Separate repositories** allow granular access control
+- **Service isolation** prevents cross-contamination
+- **Independent security policies** per service
 
-This Docker configuration provides a complete, production-ready MSA environment that can be easily deployed and managed.
+This Docker configuration provides a complete, production-ready MSA environment with clean separation between orchestration and service repositories.
