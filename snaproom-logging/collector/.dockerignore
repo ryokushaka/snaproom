@@ -1,0 +1,60 @@
+# Dockerignore for Go logging collector
+# Exclude unnecessary files from Docker build context
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+README.md
+*.md
+docs/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts and binaries
+out/
+bin/
+collector
+*.exe
+
+# Logs and temporary files
+logs/
+*.log
+tmp/
+temp/
+
+# Testing
+*_test.go
+test/
+coverage.out
+
+# Development tools
+.tool-versions
+Makefile
+docker-compose.yml
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Node.js (if any)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Docker
+Dockerfile.dev
+docker-compose.override.yml

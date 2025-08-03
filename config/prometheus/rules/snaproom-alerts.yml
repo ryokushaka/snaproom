@@ -1,0 +1,192 @@
+# Snaproom MSA Alert Rules for Prometheus
+groups:
+  - name: snaproom.application.rules
+    interval: 30s
+    rules:
+      # Application Health Alerts
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "Service {{ $labels.job }} on {{ $labels.instance }} has been down for more than 1 minute."
+          runbook_url: "https://github.com/ryokushaka/snaproom/blob/main/docs/runbooks/service-down.md"
+
+      - alert: HighErrorRate
+        expr: |
+          (
+            rate(http_requests_total{status=~"5.."}[5m]) /
+            rate(http_requests_total[5m])
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "High error rate on {{ $labels.service }}"
+          description: "Error rate is {{ $value | humanizePercentage }} for service {{ $labels.service }}"
+
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95, 
+            rate(http_request_duration_seconds_bucket{job="snaproom-laravel"}[5m])
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High latency on Laravel API"
+          description: "95th percentile latency is {{ $value }}s for Laravel API"
+
+      - alert: DatabaseConnectionHigh
+        expr: |
+          postgres_stat_activity_count{state="active"} > 80
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High number of database connections"
+          description: "PostgreSQL has {{ $value }} active connections"
+
+  - name: snaproom.infrastructure.rules
+    interval: 30s
+    rules:
+      # Infrastructure Alerts
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 10m
+        labels:
+          severity: warning
+          team: devops
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value }}% on {{ $labels.instance }}"
+
+      - alert: HighMemoryUsage
+        expr: |
+          (
+            node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes
+          ) / node_memory_MemTotal_bytes > 0.9
+        for: 10m
+        labels:
+          severity: critical
+          team: devops
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+      - alert: DiskSpaceLow
+        expr: |
+          (
+            node_filesystem_avail_bytes{fstype!="tmpfs",fstype!="overlay"} /
+            node_filesystem_size_bytes{fstype!="tmpfs",fstype!="overlay"}
+          ) < 0.1
+        for: 5m
+        labels:
+          severity: critical
+          team: devops
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Disk space is {{ $value | humanizePercentage }} full on {{ $labels.instance }}:{{ $labels.mountpoint }}"
+
+  - name: snaproom.redis.rules
+    interval: 30s
+    rules:
+      # Redis Cluster Alerts
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Redis instance is down"
+          description: "Redis instance {{ $labels.instance }} is down"
+
+      - alert: RedisHighMemoryUsage
+        expr: |
+          (redis_memory_used_bytes / redis_memory_max_bytes) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Redis high memory usage"
+          description: "Redis memory usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+      - alert: RedisSlowLog
+        expr: increase(redis_slowlog_length[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Redis slow log entries increasing"
+          description: "Redis slow log has {{ $value }} new entries in 5 minutes"
+
+  - name: snaproom.kafka.rules
+    interval: 30s
+    rules:
+      # Kafka Cluster Alerts
+      - alert: KafkaBrokerDown
+        expr: kafka_brokers < 3
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Kafka broker is down"
+          description: "Only {{ $value }} Kafka brokers are available (expected: 3)"
+
+      - alert: KafkaConsumerLag
+        expr: kafka_consumer_lag_sum > 1000
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High Kafka consumer lag"
+          description: "Consumer lag is {{ $value }} messages"
+
+      - alert: KafkaPartitionOffline
+        expr: kafka_topic_partition_in_sync_replica < kafka_topic_partition_replica
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Kafka partition offline"
+          description: "Topic {{ $labels.topic }} partition {{ $labels.partition }} has offline replicas"
+
+  - name: snaproom.business.rules
+    interval: 60s
+    rules:
+      # Business Logic Alerts
+      - alert: LowUserRegistrationRate
+        expr: rate(user_registrations_total[1h]) < 1
+        for: 30m
+        labels:
+          severity: warning
+          team: product
+        annotations:
+          summary: "Low user registration rate"
+          description: "User registration rate is {{ $value }} per hour (threshold: 1/hour)"
+
+      - alert: HighAuthenticationFailureRate
+        expr: |
+          (
+            rate(authentication_attempts_total{status="failed"}[10m]) /
+            rate(authentication_attempts_total[10m])
+          ) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "High authentication failure rate"
+          description: "Authentication failure rate is {{ $value | humanizePercentage }}"
