@@ -1,0 +1,13 @@
+# Grafana Dashboard Provisioning
+apiVersion: 1
+
+providers:
+  - name: 'snaproom-dashboards'
+    orgId: 1
+    folder: 'Snaproom MSA'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
