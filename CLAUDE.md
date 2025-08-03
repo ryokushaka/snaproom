@@ -144,3 +144,71 @@ Both projects should be running simultaneously during development:
 3. Verify API endpoints in Laravel routes and React API client
 4. Ensure CORS configuration allows React → Laravel communication
 5. Validate data flow through ADR pattern and FSD layers
+
+## Documentation Guidelines
+
+### GitHub Wiki Management
+
+This project uses **GitHub Wiki for comprehensive technical documentation** with the following principles:
+
+#### Wiki Structure & Organization
+```
+snaproom.wiki/
+├── Home.md (프로젝트 전체 개요)
+├── 01-프로젝트-가이드/
+│   ├── React-Snaproom-React/
+│   ├── Laravel-Snaproom-Laravel/  
+│   ├── Infrastructure-Snaproom-Infrastructure/
+│   └── Monitoring-Snaproom-Monitoring/
+├── 02-기술-스택-가이드/
+│   ├── React-TypeScript-FSD/
+│   ├── Laravel-ADR-Pattern/
+│   ├── Docker-Compose-MSA/
+│   └── Prometheus-Grafana-Stack/
+├── 03-개념-정리/
+│   ├── MSA-Architecture-Concepts/
+│   ├── Monitoring-Observability-Concepts/
+│   └── DevOps-CICD-Concepts/
+└── 04-기술-포트폴리오/
+    ├── 기술적-의사결정-사례/
+    ├── 문제-해결-경험/
+    └── 아키텍처-설계-경험/
+```
+
+#### Wiki Documentation Standards
+- **언어**: 모든 Wiki 문서는 **한국어**로 작성
+- **대상**: 이직 준비 및 기술 포트폴리오 활용 가능한 수준의 상세함
+- **구조**: 개념 → 실제 구현 → 의사결정 근거 → 문제 해결 → 성과 측정
+- **기술적 깊이**: 초급자 이해 + 면접관 설득 가능한 전문성 수준
+
+#### 각 기술별 문서 구성 요소
+1. **개념 및 원리**: 기술의 핵심 개념과 동작 원리
+2. **선택 근거**: 왜 이 기술을 선택했는지 (비교 분석 포함)
+3. **구현 상세**: 실제 프로젝트에서의 구체적 적용 방법
+4. **문제 해결**: 발생한 문제와 해결 과정 (트러블슈팅)
+5. **성과 및 개선**: 도입 후 측정 가능한 성과와 개선 사항
+6. **확장 계획**: 향후 개선 및 확장 방향
+
+#### Wiki 작성 가이드라인
+- **제목 규칙**: `[카테고리] 제목` 형식 (예: `[Backend] Laravel ADR 패턴 구현`)
+- **내용 구조**: 개요 → 상세 내용 → 코드 예제 → 참조 자료
+- **코드 예제**: 실제 동작하는 코드 스니펫 포함
+- **시각 자료**: 아키텍처 다이어그램, 플로우차트 등 적극 활용
+- **참조 자료**: 공식 문서, 베스트 프랙티스 자료 링크 포함
+
+#### 이직 포트폴리오 연동
+- **기술적 의사결정**: 각 기술 선택의 배경과 근거
+- **문제 해결 능력**: 실제 마주한 기술적 도전과 해결 과정
+- **아키텍처 설계**: 시스템 설계 철학과 구현 방법
+- **성장 과정**: 프로젝트를 통한 기술적 성장과 학습
+
+#### 문서 관리 경로
+- **Wiki 문서 위치**: `snaproom.wiki/` 디렉토리
+- **기존 document/ 폴더**: 사용 중단, 모든 문서는 snaproom.wiki로 이전 완료
+- **접근 방법**: GitHub Wiki UI 또는 로컬 snaproom.wiki/ 디렉토리 직접 편집
+
+#### 문서 업데이트 원칙
+- **실시간 반영**: 코드 변경 시 관련 Wiki 문서 즉시 업데이트
+- **버전 관리**: 주요 변경사항은 버전별로 기록
+- **피드백 반영**: 팀 리뷰 및 실무 경험을 통한 지속적 개선
+- **품질 관리**: 기술적 정확성과 실무 적용 가능성 중심의 품질 검토
