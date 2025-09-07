@@ -1,0 +1,198 @@
+# Promtail Configuration for Snaproom Logging System
+# Optimized for MSA log collection with proper labeling and parsing
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: info
+  disable: false
+
+# Position tracking for reliable log shipping
+positions:
+  filename: /tmp/positions.yaml
+  sync_period: 10s
+  ignore_invalid_yaml: false
+
+# Loki client configuration with retries and backoff
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+    tenant_id: snaproom
+    backoff_config:
+      min_period: 500ms
+      max_period: 5m
+      max_retries: 10
+    batchsize: 1048576
+    batchwait: 1s
+    timeout: 10s
+    external_labels:
+      cluster: snaproom-logging
+      environment: development
+      collector: promtail
+
+# Scrape configurations for different log sources
+scrape_configs:
+  # Snaproom Collector logs
+  - job_name: snaproom-collector
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: snaproom-collector
+          service: logging-collector
+          team: devops
+          __path__: /logs/collector.log
+    
+    pipeline_stages:
+      # Parse timestamp and level from collector logs
+      - regex:
+          expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (?P<message>.*)'
+      - timestamp:
+          source: timestamp
+          format: '2006-01-02 15:04:05'
+      - labels:
+          level: info
+      - output:
+          source: message
+
+  # Application logs from mounted volumes
+  - job_name: snaproom-applications
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: snaproom-applications
+          __path__: /logs/**/*.log
+    
+    pipeline_stages:
+      # Extract service name from file path
+      - regex:
+          expression: '/logs/(?P<service>[^/]+)/'
+      - labels:
+          service:
+      
+      # Parse common log formats (JSON, Laravel, etc.)
+      - match:
+          selector: '{job="snaproom-applications"}'
+          stages:
+            # Try to parse as JSON first (common for modern apps)
+            - json:
+                expressions:
+                  level: level
+                  timestamp: timestamp
+                  message: message
+                  context: context
+            
+            # If not JSON, try Laravel format
+            - regex:
+                expression: '^\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] (?P<environment>\w+)\.(?P<level>\w+): (?P<message>.*)'
+            
+            # Generic timestamp extraction fallback
+            - regex:
+                expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2})'
+            
+            # Set timestamp
+            - timestamp:
+                source: timestamp
+                format: '2006-01-02 15:04:05'
+                fallback_formats:
+                  - '2006-01-02T15:04:05Z07:00'
+                  - RFC3339
+            
+            # Set log level labels
+            - labels:
+                level:
+                environment:
+            
+            # Drop noisy logs
+            - drop:
+                expression: '.*health.*check.*'
+                older_than: 24h
+
+  # Docker container logs (if available)
+  - job_name: snaproom-docker-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: snaproom-docker-logs
+          __path__: /var/lib/docker/containers/*/*-json.log
+    
+    pipeline_stages:
+      # Parse Docker JSON log format
+      - json:
+          expressions:
+            log: log
+            stream: stream
+            time: time
+      
+      # Extract container info from file path
+      - regex:
+          expression: '/var/lib/docker/containers/(?P<container_id>[^/]+)/'
+      
+      # Parse container log content
+      - regex:
+          expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2}).*?(?P<level>DEBUG|INFO|WARN|ERROR|FATAL)'
+          source: log
+      
+      - timestamp:
+          source: time
+          format: RFC3339Nano
+      
+      - labels:
+          container_id:
+          stream:
+          level:
+      
+      - output:
+          source: log
+
+  # System logs (if available)
+  - job_name: snaproom-system-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: snaproom-system-logs
+          service: system
+          __path__: /var/log/*.log
+    
+    pipeline_stages:
+      # Parse syslog format
+      - regex:
+          expression: '^(?P<timestamp>\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}) (?P<hostname>\S+) (?P<process>\S+): (?P<message>.*)'
+      
+      - timestamp:
+          source: timestamp
+          format: 'Jan 2 15:04:05'
+          location: 'UTC'
+      
+      - labels:
+          hostname:
+          process:
+      
+      - output:
+          source: message
+
+  # Legacy job for backwards compatibility
+  - job_name: logging
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: logging
+          service: legacy
+          __path__: /logs/*.log
+    
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (?P<message>.*)'
+      - timestamp:
+          source: timestamp
+          format: '2006-01-02 15:04:05'
+      - output:
+          source: message
+
+# Limits configuration to prevent resource issues
+limits_config:
+  readline_rate: 10000
+  readline_burst: 20000

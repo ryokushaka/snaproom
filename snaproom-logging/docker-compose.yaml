@@ -1,0 +1,243 @@
+# Snaproom Logging System - Production-Ready Docker Compose
+# Integrates with main MSA architecture following Snaproom conventions
+
+version: "3.8"
+
+services:
+  # Custom Log Collector - Core component
+  collector:
+    image: snaproom-logging-collector:latest
+    container_name: snaproom-logging-collector
+    build:
+      context: ./collector
+      dockerfile: Dockerfile
+      args:
+        - GO_VERSION=1.24.2
+    restart: unless-stopped
+    networks:
+      - snaproom-logging-network
+      - snaproom-network  # Connect to main MSA network
+    volumes:
+      - collector_logs:/app/logs
+      - ./collector/logs:/app/logs  # Local development
+      - /var/log:/host/var/log:ro  # Host system logs
+    ports:
+      - "8080:8080"  # Metrics endpoint
+    environment:
+      - LOG_LEVEL=info
+      - CYCLE_INTERVAL=10
+      - METRICS_PORT=8080
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "snaproom.service=logging-collector"
+      - "snaproom.team=devops"
+      - "snaproom.monitoring=enabled"
+
+  # Prometheus - Metrics Collection
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: snaproom-logging-prometheus
+    restart: unless-stopped
+    depends_on:
+      collector:
+        condition: service_healthy
+    networks:
+      - snaproom-logging-network
+      - snaproom-network
+    volumes:
+      - ./configs/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - ./configs/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"  # Prometheus UI
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.retention.size=10GB'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+      - '--web.external-url=http://localhost:9090'
+    environment:
+      - PROMETHEUS_RETENTION_TIME=30d
+      - PROMETHEUS_RETENTION_SIZE=10GB
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "snaproom.service=prometheus"
+      - "snaproom.team=devops"
+      - "snaproom.monitoring=enabled"
+
+  # Loki - Log Aggregation
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: snaproom-logging-loki
+    restart: unless-stopped
+    networks:
+      - snaproom-logging-network
+      - snaproom-network
+    volumes:
+      - ./configs/loki.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"  # Loki API
+    command: 
+      - '-config.file=/etc/loki/local-config.yaml'
+      - '-target=all'
+    environment:
+      - LOKI_CONFIG_FILE=/etc/loki/local-config.yaml
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3100/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "snaproom.service=loki"
+      - "snaproom.team=devops"
+      - "snaproom.monitoring=enabled"
+
+  # Promtail - Log Shipper
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: snaproom-logging-promtail
+    restart: unless-stopped
+    depends_on:
+      collector:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    networks:
+      - snaproom-logging-network
+      - snaproom-network
+    volumes:
+      - ./configs/promtail.yaml:/etc/promtail/config.yaml:ro
+      - collector_logs:/logs:ro
+      - ./collector/logs:/logs:ro  # Local development
+      - /var/log:/var/log:ro  # Host system logs
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro  # Docker logs
+      - promtail_positions:/tmp
+    ports:
+      - "9080:9080"  # Promtail metrics
+    command:
+      - '-config.file=/etc/promtail/config.yaml'
+      - '-server.http-listen-port=9080'
+    environment:
+      - HOSTNAME=${HOSTNAME:-snaproom-logging}
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9080/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "snaproom.service=promtail"
+      - "snaproom.team=devops"
+      - "snaproom.monitoring=enabled"
+
+  # Grafana - Visualization Dashboard
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: snaproom-logging-grafana
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    networks:
+      - snaproom-logging-network
+      - snaproom-network
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboard.json:/var/lib/grafana/dashboards/snaproom-logging.json:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3001:3000"  # Avoid conflict with main Grafana on 3000
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=snaproom_logging_secret
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3001
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+      - GF_FEATURE_TOGGLES_ENABLE=accesscontrol
+      - GF_UNIFIED_ALERTING_ENABLED=true
+      - GF_ALERTING_ENABLED=false  # Use unified alerting
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "snaproom.service=grafana"
+      - "snaproom.team=devops"
+      - "snaproom.monitoring=enabled"
+
+# Networks configuration
+networks:
+  # Internal logging network
+  snaproom-logging-network:
+    driver: bridge
+    name: snaproom-logging-network
+    labels:
+      - "snaproom.network=logging"
+  
+  # Connect to main MSA network (external)
+  snaproom-network:
+    external: true
+    name: snaproom-network
+
+# Persistent volumes
+volumes:
+  # Collector data
+  collector_logs:
+    driver: local
+    labels:
+      - "snaproom.volume=collector-logs"
+  
+  # Prometheus data
+  prometheus_data:
+    driver: local
+    labels:
+      - "snaproom.volume=prometheus-data"
+  
+  # Loki data
+  loki_data:
+    driver: local
+    labels:
+      - "snaproom.volume=loki-data"
+  
+  # Grafana data
+  grafana_data:
+    driver: local
+    labels:
+      - "snaproom.volume=grafana-data"
+  
+  # Promtail positions
+  promtail_positions:
+    driver: local
+    labels:
+      - "snaproom.volume=promtail-positions"
+
+# Health check and monitoring extensions
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+    labels: "snaproom.service,snaproom.team"
+
+x-restart: &default-restart
+  restart_policy:
+    condition: unless-stopped
+    delay: 10s
+    max_attempts: 3
+    window: 120s
